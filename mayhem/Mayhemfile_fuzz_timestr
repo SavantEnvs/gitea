@@ -1,0 +1,8 @@
+project: savantenvs/gitea
+target: fuzz_timestr
+testsuite:
+  - https://$MAYHEM_DOMAIN/$MAYHEM_PROJECT/$MAYHEM_TARGET/testsuite.tar
+  - file://mayhem/fuzz_timestr/testsuite
+cmds:
+  - cmd: /mayhem/fuzz_timestr
+    libfuzzer: true
