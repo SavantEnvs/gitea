@@ -1,0 +1,6 @@
+project: savantenvs/gitea
+target: fuzz-markdown-render-raw-buggy-mhh-run-218
+cmds:
+  - cmd: /mayhem/fuzz_markdown_render_raw
+    libfuzzer: true
+# origin: https://app.mayhem.security/mayhemheroes/gitea/fuzz-markdown-render-raw/218
