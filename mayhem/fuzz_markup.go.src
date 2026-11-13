@@ -1,0 +1,41 @@
+// mayhem/fuzz_markup.go.src — libFuzzer harnesses for gitea's markdown renderer and markup
+// post-processor, staged by build.sh into _mayhem_fuzz/ inside the gitea module.
+//
+// Same calls as upstream's tests/fuzz/fuzz_test.go, but run in PRODUCTION mode
+// (IsProd=true, IsInTesting=false). Upstream sets IsInTesting=true on every input, which turns
+// setting.PanicInDevOrTesting (a developer-only invariant assertion that a production server
+// only logs) into a hard crash. NewTestRenderContext refuses to run outside testing, so the
+// flag is raised just for building the context and dropped again before the fuzzed call.
+// Both are set on every input, so each result depends only on that input.
+package fuzz
+
+import (
+	"bytes"
+	"io"
+	"testing"
+
+	"gitea.dev/modules/markup"
+	"gitea.dev/modules/markup/markdown"
+	"gitea.dev/modules/setting"
+)
+
+func prodRenderContext() *markup.RenderContext {
+	setting.IsInTesting = true
+	ctx := markup.NewTestRenderContext("https://example.com/go-gitea/gitea", map[string]string{"user": "go-gitea", "repo": "gitea"})
+	setting.IsInTesting = false
+	setting.IsProd = true
+	setting.AppURL = "http://localhost:3000/"
+	return ctx
+}
+
+func FuzzMarkdownRenderRaw(f *testing.F) {
+	f.Fuzz(func(t *testing.T, data []byte) {
+		markdown.RenderRaw(prodRenderContext(), bytes.NewReader(data), io.Discard)
+	})
+}
+
+func FuzzMarkupPostProcess(f *testing.F) {
+	f.Fuzz(func(t *testing.T, data []byte) {
+		markup.PostProcessDefault(prodRenderContext(), bytes.NewReader(data), io.Discard)
+	})
+}

@@ -1,0 +1,6 @@
+Footnote[^1] and <details><summary>x</summary>y</details> <script>alert(1)</script> <img src=x onerror=alert(1)>
+
+[^1]: note
+
+---
+> quote

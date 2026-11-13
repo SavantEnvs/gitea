@@ -1,0 +1,60 @@
+// mayhem/kat_markup.go.src — dynamically-linked known-answer probe for gitea's markup
+// renderers (the code behind fuzz_markdown_render_raw / fuzz_markup_post_process).
+// `import "C"` (cgo) forces a DYNAMICALLY LINKED binary so the gate's LD_PRELOAD
+// sabotage shim can neuter it; a statically-linked Go binary would be immune.
+//
+// Staged by mayhem/build.sh into _mayhem_kat/main.go (inside the gitea module, so it can
+// import gitea.dev/modules/*). It renders fixed inputs through the REAL renderers and
+// prints the results in a fixed, greppable format for mayhem/test.sh to assert.
+package main
+
+// #include <stdint.h>
+import "C"
+
+import (
+	"bytes"
+	"fmt"
+	"strings"
+
+	"gitea.dev/modules/markup"
+	"gitea.dev/modules/markup/markdown"
+	"gitea.dev/modules/setting"
+)
+
+func ctx() *markup.RenderContext {
+	return markup.NewTestRenderContext("https://example.com/go-gitea/gitea", map[string]string{"user": "go-gitea", "repo": "gitea"})
+}
+
+func md(in string) string {
+	var buf bytes.Buffer
+	if err := markdown.RenderRaw(ctx(), strings.NewReader(in), &buf); err != nil {
+		return "ERR:" + err.Error()
+	}
+	return buf.String()
+}
+
+func post(in string) string {
+	var buf bytes.Buffer
+	if err := markup.PostProcessDefault(ctx(), strings.NewReader(in), &buf); err != nil {
+		return "ERR:" + err.Error()
+	}
+	return buf.String()
+}
+
+func line(key, val string) {
+	fmt.Printf("%s=%q\n", key, val)
+}
+
+func main() {
+	setting.IsInTesting = true
+	setting.AppURL = "http://localhost:3000/"
+
+	line("MD_BOLD", md("**bold**"))
+	line("MD_EM", md("*em*"))
+	line("MD_CODE", md("`code`"))
+	line("MD_LINK", md("[a](https://example.com/x)"))
+	line("MD_LIST", md("- one\n- two\n"))
+	line("MD_SCRIPT", md("hi <script>alert(1)</script>"))
+	line("MD_TASK", md("- [x] done\n- [ ] todo\n"))
+	line("POST_URL", post("<p>go https://example.com/x now</p>"))
+}

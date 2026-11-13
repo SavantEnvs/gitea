@@ -1,0 +1,55 @@
+// mayhem/kat_main.go.src — dynamically-linked known-answer probe for gitea's
+// work-time duration parser. `import "C"` (cgo) forces a DYNAMICALLY LINKED
+// binary so the gate's LD_PRELOAD sabotage shim can neuter it; a
+// statically-linked Go test binary would be immune and give a false-green
+// oracle — exactly the trap netnew §4 warns about with `go test` alone.
+//
+// Staged by mayhem/build.sh into _mayhem_harness/timestr/kat/main.go, it imports
+// the staged `util` package (a verbatim copy of modules/util/time_str.go) and
+// runs TimeEstimateParse()/TimeEstimateString() over fixed inputs through the
+// REAL parser, printing the decoded values in a fixed, greppable format for
+// mayhem/test.sh to assert. Every expected value below is lifted from upstream's
+// own modules/util/time_str_test.go golden cases.
+package main
+
+// #include <stdint.h>
+import "C"
+
+import (
+	"fmt"
+
+	util "gitea.dev/_mayhem_harness/timestr"
+)
+
+func b2s(b bool) string {
+	if b {
+		return "true"
+	}
+	return "false"
+}
+
+func mustParse(s string) int64 {
+	v, err := util.TimeEstimateParse(s)
+	if err != nil {
+		return -1
+	}
+	return v
+}
+
+func main() {
+	// Valid durations (time_str_test.go golden cases).
+	fmt.Printf("KAT_1H=%d\n", mustParse("1h"))
+	fmt.Printf("KAT_1M=%d\n", mustParse("1m"))
+	fmt.Printf("KAT_1S=%d\n", mustParse("1s"))
+	fmt.Printf("KAT_COMBO=%d\n", mustParse("1h 1m 1s"))
+
+	// Malformed input must be rejected.
+	_, err := util.TimeEstimateParse("1h_2m")
+	fmt.Printf("KAT_ERR_UNDERSCORE=%s\n", b2s(err != nil))
+	_, err = util.TimeEstimateParse("1h,1m")
+	fmt.Printf("KAT_ERR_COMMA=%s\n", b2s(err != nil))
+
+	// Formatting (time_str_test.go golden cases).
+	fmt.Printf("KAT_STR_3600=%s\n", util.TimeEstimateString(3600))
+	fmt.Printf("KAT_STR_3601=%s\n", util.TimeEstimateString(3601))
+}

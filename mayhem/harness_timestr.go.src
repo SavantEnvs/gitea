@@ -1,0 +1,66 @@
+// mayhem/harness_timestr.go.src — native testing.F harness for gitea's work-time
+// duration parser (modules/util/time_str.go: TimeEstimateParse — the "1h 2m 3s"
+// estimated-working-time value used on issues/PRs).
+//
+// WHY a staged mini-module (netnew §6 Go / port-go): the real gitea module
+// (`gitea.dev`) pins `go 1.27` and its modules/util package drags in a broad
+// dependency closure across the package. TimeEstimateParse + TimeEstimateString,
+// though, live entirely in time_str.go and need nothing but stdlib (fmt + regexp
+// + strconv + strings + sync). So mayhem/build.sh copies ONLY
+// modules/util/time_str.go (verbatim) into a fresh, standalone Go module at
+// _mayhem_harness/timestr and points go-118-fuzz-build there. That isolates the
+// fuzz + KAT builds from gitea's giant dependency graph entirely — the harness
+// module's only non-stdlib dep is the go-118-fuzz-build /testing shim itself.
+//
+// Declared `package util` (the copied file's package) so it reaches
+// TimeEstimateParse directly. Byte-in, NO file I/O (netnew §3): the fuzzer's
+// bytes become the parser input; starter seeds are Mayhem's job via the
+// Mayhemfile testsuite: directive.
+package util
+
+import "testing"
+
+// FuzzTimeEstimateParse drives TimeEstimateParse() with an arbitrary string and,
+// on any successfully-parsed value, checks the parse<->format round-trip
+// invariant: formatting the decoded seconds and re-parsing them must reproduce
+// the same total. It must never panic on any input — including malformed unit
+// strings, huge/overflowing integers, and empty input.
+func FuzzTimeEstimateParse(f *testing.F) {
+	// Representative durations across valid / malformed / edge shapes.
+	f.Add("1h")
+	f.Add("1m")
+	f.Add("1s")
+	f.Add("1h 1m 1s")
+	f.Add("")
+	f.Add("   ")
+	f.Add("1d1x")
+	f.Add("1h_2m")
+	f.Add("1h,1m")
+	f.Add("999999999999999999h")
+	f.Add("-1h")
+
+	f.Fuzz(func(t *testing.T, data string) {
+		total, err := TimeEstimateParse(data)
+		if err != nil {
+			return
+		}
+		// A successful parse always yields a non-negative total; formatting it
+		// and re-parsing must round-trip back to the same value.
+		s := TimeEstimateString(total)
+		if s == "" {
+			return // 0 (or an overflow-wrapped value) formats to empty — nothing to check
+		}
+		rt, err2 := TimeEstimateString2Total(s)
+		if err2 != nil {
+			t.Fatalf("TimeEstimateString(%d)=%q failed to re-parse: %v", total, s, err2)
+		}
+		if rt != total {
+			t.Fatalf("round-trip mismatch: parse(%q)=%d -> string=%q -> parse=%d", data, total, s, rt)
+		}
+	})
+}
+
+// TimeEstimateString2Total re-parses a canonical duration string; a thin alias so
+// the round-trip check reads clearly. (Kept local to the harness so the copied
+// time_str.go stays verbatim.)
+func TimeEstimateString2Total(s string) (int64, error) { return TimeEstimateParse(s) }
